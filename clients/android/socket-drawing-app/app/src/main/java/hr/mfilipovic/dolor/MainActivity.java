@@ -2,8 +2,10 @@ package hr.mfilipovic.dolor;
 
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
+import android.text.method.ScrollingMovementMethod;
 import android.util.Log;
 import android.view.MotionEvent;
+import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 
@@ -13,9 +15,13 @@ import okio.ByteString;
 
 public class MainActivity extends AppCompatActivity implements ColorWebSocketOperator {
 
+    private static final boolean DEBUG_LOGCAT = BuildConfig.DEBUG_LOGCAT;
+    private static final boolean DEBUG_CONSOLE_OUT = BuildConfig.CONSOLE_OUT;
     public static final String TAG = "MainActivity";
-    private static final boolean DEBUG = false;
-    private ColorView mView;
+
+    private TextView mConsoleView;
+    private ColorView mColorView;
+    private ColorWebSocketCommunicator mCommunicator;
 
     float startX;
     float startY;
@@ -33,17 +39,16 @@ public class MainActivity extends AppCompatActivity implements ColorWebSocketOpe
     }
 
     private void setupWebSocket() {
-        ColorWebSocketCommunicator comm = new ColorWebSocketCommunicator();
-        comm.url("wss://echo.websocket.org")
+        mCommunicator = new ColorWebSocketCommunicator();
+        mCommunicator.url("wss://echo.websocket.org")
                 .operator(this)
                 .build();
-        comm.send("Hello!");
     }
 
     private void setupDrawingView() {
-        mView = new ColorView(getApplicationContext());
+        mColorView = new ColorView(getApplicationContext());
         FrameLayout frameLayout = findViewById(R.id.frame_layout);
-        frameLayout.addView(mView);
+        frameLayout.addView(mColorView);
     }
 
     @Override
@@ -92,28 +97,29 @@ public class MainActivity extends AppCompatActivity implements ColorWebSocketOpe
     }
 
     private void press(float x, float y) {
-        mView.startPath(x, y);
+        mColorView.startPath(x, y);
         logEvent("DOWN", "start", x, y);
     }
 
     private void moving(float x, float y) {
-        mView.addToPath(x, y);
+        mColorView.addToPath(x, y);
         logEvent("MOVE", "middle", x, y);
     }
 
     private void release(float x, float y) {
-        mView.finishPath(x, y);
+        mCommunicator.send(String.format(Locale.getDefault(), "{'x': %f, 'y': %f}", x, y));
+        mColorView.finishPath(x, y);
         logEvent("UP", "end", x, y);
     }
 
     private void logEvent(String action, String position, float X, float Y) {
-        if (DEBUG) {
+        if (DEBUG_LOGCAT) {
             Log.d(TAG, String.format("%s, %s: %f, %f", action, position, X, Y));
         }
     }
 
     private void logEvent(MotionEvent e) {
-        if (DEBUG) {
+        if (DEBUG_LOGCAT) {
             String action = getActionName(e.getAction());
             Log.d(TAG, String.format("%s, %f, %f", action, e.getX(), e.getY()));
         }
@@ -139,28 +145,37 @@ public class MainActivity extends AppCompatActivity implements ColorWebSocketOpe
     }
 
     @Override
-    public void sent() {
-        console("Message sent!");
+    public void opened() {
+        console("Socket opened!");
+    }
+
+    @Override
+    public void sent(boolean success, String payload) {
+        if (success) {
+            console("Message sent!");
+        } else {
+            console("Queue rejected the message! Message: %s", payload);
+        }
     }
 
     @Override
     public void received(String message) {
-        console("Message: " + message);
+        console("New message: " + message);
     }
 
     @Override
     public void received(ByteString bytes) {
-        console("Message: " + bytes.toString());
+        console("New message: " + bytes.toString());
     }
 
     @Override
     public void closing(int code, String reason) {
-        console(String.format(Locale.getDefault(), "Closing! %d/%s", code, reason));
+        console("Closing! %d/%s", code, reason);
     }
 
     @Override
     public void closed(int code, String reason) {
-        console(String.format(Locale.getDefault(), "Closed! %d/%s", code, reason));
+        console("Closed! %d/%s", code, reason);
     }
 
     @Override
@@ -168,26 +183,38 @@ public class MainActivity extends AppCompatActivity implements ColorWebSocketOpe
         console("Failed: " + message);
     }
 
-    private TextView consoleView;
+    private void console(String format, Object... value) {
+        console(String.format(Locale.getDefault(), format, value));
+    }
 
     private void console(String out) {
-        runOnUiThread(new Runnable() {
-            String out;
+        if (DEBUG_CONSOLE_OUT) {
+            runOnUiThread(new Runnable() {
+                String out;
 
-            @Override
-            public void run() {
-                if (consoleView == null) {
-                    consoleView = findViewById(R.id.console_out);
+                @Override
+                public void run() {
+                    if (mConsoleView == null) {
+                        mConsoleView = findViewById(R.id.console_out);
+                        mConsoleView.setMovementMethod(new ScrollingMovementMethod());
+                        mColorView.setVisibility(View.VISIBLE);
+                    }
+                    StringBuilder currentText = new StringBuilder(mConsoleView.getText().toString());
+                    mConsoleView.setText(currentText.append("\n").append(out));
+                    Log.i(TAG, "console: " + out);
                 }
-                String currentText = consoleView.getText().toString();
-                consoleView.setText(String.format("%s\n%s", currentText, out));
-                Log.i(TAG, "console: " + out);
-            }
 
-            Runnable content(String out) {
-                this.out = out;
-                return this;
-            }
-        }.content(out));
+                Runnable content(String out) {
+                    this.out = out;
+                    return this;
+                }
+            }.content(out));
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        mCommunicator.destroy();
     }
 }

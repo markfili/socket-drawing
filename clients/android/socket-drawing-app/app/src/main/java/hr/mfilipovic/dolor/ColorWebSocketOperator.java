@@ -3,7 +3,9 @@ package hr.mfilipovic.dolor;
 import okio.ByteString;
 
 interface ColorWebSocketOperator {
-    void sent();
+    void opened();
+
+    void sent(boolean success, String payload);
 
     void received(String message);
 

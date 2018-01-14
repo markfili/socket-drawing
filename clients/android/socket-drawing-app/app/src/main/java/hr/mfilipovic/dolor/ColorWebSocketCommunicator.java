@@ -17,6 +17,7 @@ public class ColorWebSocketCommunicator extends WebSocketListener {
     private ColorWebSocketOperator operator;
     private String url;
     private String payload;
+    private WebSocket webSocket;
 
     public ColorWebSocketCommunicator operator(ColorWebSocketOperator operator) {
         this.operator = operator;
@@ -30,29 +31,24 @@ public class ColorWebSocketCommunicator extends WebSocketListener {
 
     public ColorWebSocketCommunicator build() {
         this.client = new OkHttpClient.Builder().build();
+        Request request = new Request.Builder().url(url).build();
+        this.webSocket = this.client.newWebSocket(request, this);
         return this;
     }
 
     public void destroy() {
+        this.webSocket.close(1000, "Normal closure. Goodbye!");
+        this.client.dispatcher().executorService().shutdown();
         this.client = null;
     }
 
     public void send(String payload) {
-        if (this.client == null) {
-            throw new RuntimeException("Forgot to call build method, have you? I know it's redundant but who gives?");
-        }
-        this.payload = payload;
-
-        Request request = new Request.Builder().url(url).build();
-        this.client.newWebSocket(request, this);
-        this.client.dispatcher().executorService().shutdown();
+        operator.sent(this.webSocket.send(payload), payload);
     }
 
     @Override
     public void onOpen(WebSocket webSocket, Response response) {
-        webSocket.send(payload);
-        webSocket.close(NORMAL_CLOSURE_STATUS, "Goodbye!");
-        operator.sent();
+        operator.opened();
     }
 
     @Override

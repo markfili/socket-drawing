@@ -20,6 +20,19 @@ android {
                 optimizeCode false
                 proguardFile 'proguard-rules.pro'
             }
+            buildConfigField("Boolean", "DEBUG_LOGCAT", "false")
+            buildConfigField("Boolean", "DEBUG_CONSOLE_OUT", "false")
+        }
+
+        debug {
+            buildConfigField("Boolean", "DEBUG_LOGCAT", "true")
+            buildConfigField("Boolean", "DEBUG_CONSOLE_OUT", "true")
+        }
+
+        development {
+            initWith debug
+            buildConfigField("Boolean", "DEBUG_LOGCAT", "false")
+            buildConfigField("Boolean", "DEBUG_CONSOLE_OUT", "false")
         }
     }
 }
