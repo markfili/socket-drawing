@@ -5,8 +5,13 @@ import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.widget.FrameLayout;
+import android.widget.TextView;
 
-public class MainActivity extends AppCompatActivity {
+import java.util.Locale;
+
+import okio.ByteString;
+
+public class MainActivity extends AppCompatActivity implements ColorWebSocketOperator {
 
     public static final String TAG = "MainActivity";
     private static final boolean DEBUG = false;
@@ -23,7 +28,16 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        setupWebSocket();
         setupDrawingView();
+    }
+
+    private void setupWebSocket() {
+        ColorWebSocketCommunicator comm = new ColorWebSocketCommunicator();
+        comm.url("wss://echo.websocket.org")
+                .operator(this)
+                .build();
+        comm.send("Hello!");
     }
 
     private void setupDrawingView() {
@@ -122,5 +136,58 @@ public class MainActivity extends AppCompatActivity {
                 break;
         }
         return result;
+    }
+
+    @Override
+    public void sent() {
+        console("Message sent!");
+    }
+
+    @Override
+    public void received(String message) {
+        console("Message: " + message);
+    }
+
+    @Override
+    public void received(ByteString bytes) {
+        console("Message: " + bytes.toString());
+    }
+
+    @Override
+    public void closing(int code, String reason) {
+        console(String.format(Locale.getDefault(), "Closing! %d/%s", code, reason));
+    }
+
+    @Override
+    public void closed(int code, String reason) {
+        console(String.format(Locale.getDefault(), "Closed! %d/%s", code, reason));
+    }
+
+    @Override
+    public void failed(String message) {
+        console("Failed: " + message);
+    }
+
+    private TextView consoleView;
+
+    private void console(String out) {
+        runOnUiThread(new Runnable() {
+            String out;
+
+            @Override
+            public void run() {
+                if (consoleView == null) {
+                    consoleView = findViewById(R.id.console_out);
+                }
+                String currentText = consoleView.getText().toString();
+                consoleView.setText(String.format("%s\n%s", currentText, out));
+                Log.i(TAG, "console: " + out);
+            }
+
+            Runnable content(String out) {
+                this.out = out;
+                return this;
+            }
+        }.content(out));
     }
 }
