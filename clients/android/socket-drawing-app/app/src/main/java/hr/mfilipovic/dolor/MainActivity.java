@@ -16,7 +16,7 @@ import okio.ByteString;
 public class MainActivity extends AppCompatActivity implements ColorWebSocketOperator {
 
     private static final boolean DEBUG_LOGCAT = BuildConfig.DEBUG_LOGCAT;
-    private static final boolean DEBUG_CONSOLE_OUT = BuildConfig.CONSOLE_OUT;
+    private static final boolean DEBUG_CONSOLE_OUT = BuildConfig.DEBUG_CONSOLE_OUT;
     public static final String TAG = "MainActivity";
 
     private TextView mConsoleView;
@@ -197,7 +197,7 @@ public class MainActivity extends AppCompatActivity implements ColorWebSocketOpe
                     if (mConsoleView == null) {
                         mConsoleView = findViewById(R.id.console_out);
                         mConsoleView.setMovementMethod(new ScrollingMovementMethod());
-                        mColorView.setVisibility(View.VISIBLE);
+                        mConsoleView.setVisibility(View.VISIBLE);
                     }
                     StringBuilder currentText = new StringBuilder(mConsoleView.getText().toString());
                     mConsoleView.setText(currentText.append("\n").append(out));
