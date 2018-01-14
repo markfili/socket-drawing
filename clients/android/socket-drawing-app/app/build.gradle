@@ -1,4 +1,5 @@
 apply plugin: 'com.android.application'
+apply from: 'https://raw.githubusercontent.com/sensorberg-dev/android-code-quality/master/checks.gradle'
 
 android {
     compileSdkVersion 27
