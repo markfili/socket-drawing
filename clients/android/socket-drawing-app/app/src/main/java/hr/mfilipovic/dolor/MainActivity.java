@@ -9,6 +9,12 @@ import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 
 import okio.ByteString;
@@ -30,12 +36,16 @@ public class MainActivity extends AppCompatActivity implements ColorWebSocketOpe
     float endX;
     float endY;
 
+    private float mFieldBlockSize;
+    private DrawingRunnable mDrawingRunnable;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         setupWebSocket();
         setupDrawingView();
+        sendInitMessage();
     }
 
     private void setupWebSocket() {
@@ -49,6 +59,24 @@ public class MainActivity extends AppCompatActivity implements ColorWebSocketOpe
         mColorView = new ColorView(getApplicationContext());
         FrameLayout frameLayout = findViewById(R.id.frame_layout);
         frameLayout.addView(mColorView);
+    }
+
+    private void sendInitMessage() {
+        try {
+            mCommunicator.send(initMessage());
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private String initMessage() throws JSONException {
+        JSONObject message = new JSONObject();
+        message.put("method", "init");
+        JSONObject field = new JSONObject();
+        field.put("x", 100);
+        field.put("y", 100);
+        message.put("field", field);
+        return message.toString();
     }
 
     @Override
@@ -97,19 +125,45 @@ public class MainActivity extends AppCompatActivity implements ColorWebSocketOpe
     }
 
     private void press(float x, float y) {
-        mColorView.startPath(x, y);
+//        mColorView.startPath(x, y);
+        mCommunicator.send(getCoordinatesJson(getActionName(MotionEvent.ACTION_DOWN), x, y));
         logEvent("DOWN", "start", x, y);
     }
 
     private void moving(float x, float y) {
-        mColorView.addToPath(x, y);
+//        mColorView.addToPath(x, y);
+        mCommunicator.send(getCoordinatesJson(getActionName(MotionEvent.ACTION_MOVE), x, y));
         logEvent("MOVE", "middle", x, y);
     }
 
     private void release(float x, float y) {
-        mCommunicator.send(String.format(Locale.getDefault(), "{'x': %f, 'y': %f}", x, y));
-        mColorView.finishPath(x, y);
+//        mColorView.finishPath(x, y);
+        mCommunicator.send(getCoordinatesJson(getActionName(MotionEvent.ACTION_UP), x, y));
         logEvent("UP", "end", x, y);
+    }
+
+    JSONObject response = new JSONObject();
+    JSONObject block = new JSONObject();
+
+    private String getCoordinatesJson(String action, float x, float y) {
+        try {
+            response.put("method", "draw");
+            response.put("action", action);
+            block.put("x", getFieldX(x));
+            block.put("y", getFieldY(y));
+            response.put("block", block);
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+        return response.toString();
+    }
+
+    private int getFieldX(float x) {
+        return (int) (x / mFieldBlockSize);
+    }
+
+    private int getFieldY(float y) {
+        return (int) (y / mFieldBlockSize);
     }
 
     private void logEvent(String action, String position, float X, float Y) {
@@ -161,6 +215,82 @@ public class MainActivity extends AppCompatActivity implements ColorWebSocketOpe
     @Override
     public void received(String message) {
         console("New message: " + message);
+        try {
+            JSONObject response = new JSONObject(message);
+            if (response.has("method")) {
+                if (response.get("method").equals("init")) {
+                    float widthPixels = getResources().getDisplayMetrics().widthPixels;
+                    float heightPixels = getResources().getDisplayMetrics().heightPixels;
+                    float availablePixels = widthPixels > heightPixels ? heightPixels : widthPixels;
+
+                    int fieldSizeWidth = response.getJSONObject("field").getInt("x");
+                    int fieldSizeHeight = response.getJSONObject("field").getInt("y");
+                    int requestedFieldSize = fieldSizeHeight > fieldSizeWidth ? fieldSizeHeight : fieldSizeWidth;
+                    mFieldBlockSize = availablePixels / requestedFieldSize;
+
+                    console("Base field size: %f", mFieldBlockSize);
+                } else if (response.get("method").equals("draw")) {
+                    float x = response.getJSONObject("block").getInt("x") * mFieldBlockSize;
+                    float y = response.getJSONObject("block").getInt("y") * mFieldBlockSize;
+//                    if (!alreadyDrawn(x, y)) {
+                    if (mDrawingRunnable == null) {
+                        mDrawingRunnable = new DrawingRunnable(mColorView);
+                    }
+                    mDrawingRunnable.setCoordinates(response.getString("action"), x, y);
+                    runOnUiThread(mDrawingRunnable);
+//                    }
+                }
+            }
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+    }
+
+    HashMap<Integer, ArrayList<Integer>> field = new HashMap<>();
+
+    private boolean alreadyDrawn(float x, float y) {
+        List<Integer> ys;
+        if ((ys = field.get(((int) x))) == null) {
+            field.put(((int) x), new ArrayList<Integer>());
+            ys = field.get(((int) x));
+        }
+        if (ys.contains((int) y)) {
+            return true;
+        }
+        ys.add((int) y);
+        return false;
+    }
+
+    static class DrawingRunnable implements Runnable {
+        private ColorView mColorView;
+        private float y;
+        private float x;
+        private String action;
+
+        public DrawingRunnable(ColorView view) {
+            this.mColorView = view;
+        }
+
+        void setCoordinates(String action, float x, float y) {
+            this.action = action;
+            this.x = x;
+            this.y = y;
+        }
+
+        @Override
+        public void run() {
+            switch (action) {
+                case "DOWN":
+                    mColorView.startPath(x, y);
+                    break;
+                case "MOVE":
+                    mColorView.addToPath(x, y);
+                    break;
+                case "UP":
+                    mColorView.finishPath(x, y);
+                    break;
+            }
+        }
     }
 
     @Override
